@@ -16,6 +16,12 @@ Day 1
 -----
 Didn't get far. I found a micro-b cable, but need Ethernet cable and SD card.
 
+Day 2
+-----
+I scrounged an Ethernet cable and SD card.  Fortunately my laptop had an sd reader/writer.
+Installation was easy and bring up was easy (just follow Getting Started). I'm writing
+this post from the Jetson.
+
 
 
 
