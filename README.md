@@ -12,17 +12,36 @@ Links
 * [User Guide](https://developer.nvidia.com/embedded/downloads#?search=Jetson%20Nano%20Developer%20Kit%20User%20Guide)
 
 
-Day 1
------
+Day 1 - Unbox
+-------------
 Didn't get far. I found a micro-b cable, but need Ethernet cable and SD card.
 
-Day 2
------
+
+Day 2 - Install
+---------------
 I scrounged an Ethernet cable and SD card.  Fortunately my laptop had an sd reader/writer.
 Installation was easy and bring up was easy (just follow Getting Started). I'm writing
 this post from the Jetson.
 
+
+Day 3 - Run Demo
+----------------
+Run demos following Instructables Youtube video.
+
+
+Day 4 - Install OpenCV from Source
+--------------------------
+This takes a few hours.
+ 
+* [Michael Degans' Github build script](https://github.com/mdegans/nano_build_opencv)
+* [JetsonHacks OPENCV 4 + CUDA on Jetson Nano](https://jetsonhacks.com/2019/11/22/opencv-4-cuda-on-jetson-nano/)
+
+
 ```
+$ git clone https://github.com/nano_build_opencv
+$ cd nano_build_opencv
+$ ./build_opencv.sh
+WAIT A FEW HOURS...
 $ opencv_version
 4.4.0
 $ which opencv_version
@@ -31,11 +50,10 @@ $ls /usr/local/lib
 libopencv_manyfiles.so
 ```
 
-Python and OpenCV
+Day 5 - Python and OpenCV
 -----------------
 
 ```
-
 $ python --version
 Python 2.7.17
 $ python3 --version
