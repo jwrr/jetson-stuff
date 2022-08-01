@@ -28,6 +28,17 @@ Day 3 - Run Demo
 ----------------
 Run demos following Instructables Youtube video.
 
+```
+cd /usr/share/visionworks/sources
+./install-samples.sh ~
+cd ~
+cd VisionWorks-1.6-Samples
+make
+cd ./bin/aarch64/linux/release
+./nvx_demo_feature_tracker
+./nvx_demo_hough_transform
+  SPACE, M, ESC
+```
 
 Day 4 - Install OpenCV from Source
 --------------------------
