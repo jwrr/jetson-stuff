@@ -10,12 +10,12 @@ sudo apt update
 sudo apt install libopencv-dev python3-opencv
 ```
 
-Draw Circle C++
------------
+Compile and Run some C++ OpenCV Examples
+----------------------------------------
 
 ```
-# Compile 1_circle.cpp
 ./1_circle.sh
+./2_rectangle.sh
 ```
 
 
