@@ -99,10 +99,11 @@ Canny Edge Detection (JETSONHACKS)
 ----------------------------------
 
 
+Google Colab
+------------
 
-
-
-
-
-
-
+* File > New notebook
+* Runtime > Change runtime type > GPU
+* [Step by step. I started at step 5](https://www.geeksforgeeks.org/how-to-run-cuda-c-c-on-jupyter-notebook-in-google-colaboratory/)
+  * Change "> > >" to ">>>" on line 48
+* Ctrl-ML to turn on line numbers
