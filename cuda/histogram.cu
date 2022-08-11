@@ -1,6 +1,5 @@
 !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
 %load_ext nvcc_plugin
-
 %%cu
 // histogram.cu
 // This program computes a histogram on the GPU using CUDA
@@ -10,6 +9,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <time.h>
 
 using namespace std;
 
@@ -26,7 +26,6 @@ __global__ void histogram(int* input, int* bins, int N_inputs, int N_bins, int D
   if (threadIdx.x < N_bins) {
       s_bins[threadIdx.x] = 0;
   }
-
   // Wait for all threads, which ensures the above initialization code has been
   // run.
    __syncthreads();
@@ -73,9 +72,12 @@ void init_array(int *a, int N, int value)
   }
 }
 
+// ==========================================================================
+// ==========================================================================
+
 int main()
 {
-  int N = 1 << 20;
+  int N = 1 << 28;
   size_t bytes = N * sizeof(int);
   int N_bins = 10;
   size_t bytes_bins = N_bins * sizeof(int);
@@ -89,11 +91,6 @@ int main()
   // Load input array with random data
   int MAX = 123;
   rand_array(input, N, MAX);
-  cout << "startxxx" << endl;
-
-  // Clear the histogram bins
-  init_array(bins, N_bins, 0);
-  cout << "startyyy" << endl;
 
   int DIV = (100 + N_bins - 1) / N_bins;
 
@@ -109,21 +106,34 @@ int main()
   int BLOCKS = (N + THREADS - 1) / THREADS;
   size_t SHMEM_SIZE = N_bins * sizeof(int);
 
-  // Call the kernel
-  histogram<<<BLOCKS, THREADS, SHMEM_SIZE>>>(input, bins, N, N_bins, DIV, 2);
+  for (int testMode = 0; testMode < 3; testMode++) {
 
-  // Kernel launches are asynchronous so synchronize then
-  cudaDeviceSynchronize();
+    // Clear the histogram bins
+    init_array(bins, N_bins, 0);
 
-  int tmp = 0;
-  for (int i = 0; i < N_bins; i++){
-    cout << i << ": " << bins[i] << endl;
-    tmp += bins[i];
+    double startTime;
+    startTime = (double)clock()/CLOCKS_PER_SEC;
+    // Call the kernel
+    histogram<<<BLOCKS, THREADS, SHMEM_SIZE>>>(input, bins, N, N_bins, DIV, testMode);
+    // Wait for all devices to finish
+    cudaDeviceSynchronize();
+    double endTime;
+    double elapsedTime;
+    endTime = (double)clock()/CLOCKS_PER_SEC;
+    double elapsedTimeGPU = endTime - startTime;
+    printf ("testMode = %d Elapsed time = %6.6f\n", testMode, elapsedTimeGPU);
+
+    int tmp = 0;
+    for (int i = 0; i < N_bins; i++){
+      cout << i << ": " << bins[i] << endl;
+      tmp += bins[i];
+    }
+    cout << tmp << endl;
   }
-  
-  cout << tmp << endl;
+
   cout << "done" << endl;
   return 0; 
 
 } // main
+
 
