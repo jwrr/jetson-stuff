@@ -1,9 +1,14 @@
+!pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
+%load_ext nvcc_plugin
+%%cu
+
 %%cu
 // vector add
 // nvcc -o vector_add.exe vector_add.cu
 
 #include <stdio.h>
 #include <stdlib.h>
+
 
 __global__ void v_add(int* a, int* b, int* c, int n)
 {
@@ -13,9 +18,34 @@ __global__ void v_add(int* a, int* b, int* c, int n)
   }
 }
 
+
+void v_add_cpu(int* a, int* b, int* c, int n)
+{
+//  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = 0; i < n; i++) {
+    c[i] = a[i] + b[i];
+  }
+}
+
+
+double t1;
+void startTimer()
+{
+  t1 = (double)clock()/CLOCKS_PER_SEC;
+}
+
+
+void stopTimer(char* title)
+{
+  double t2 = (double)clock()/CLOCKS_PER_SEC;
+  double elapsedTime = t2 - t1;
+  printf ("%s: Elapsed time = %6.6f\n", title, elapsedTime);
+}
+
+
 int main()
 {
-  int n = 1 << 20;
+  int n = 1 << 28;
 
   int* h_a;
   int* h_b;
@@ -42,13 +72,17 @@ int main()
   int grid_size = (int)ceil( (float)n / block_size);
   printf("Grid size = %d\n", grid_size);
 
+  startTimer();
   cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice);
   cudaMemcpy(d_b, h_b, bytes, cudaMemcpyHostToDevice);
-  
   v_add<<<grid_size, block_size>>>(d_a, d_b, d_c, n);
-  
   cudaMemcpy(h_c, d_c, bytes, cudaMemcpyDeviceToHost);
-  
+  stopTimer("Vector Add (GPU)");
+
+  startTimer();
+  v_add_cpu(h_a, h_b, h_c, n);
+  stopTimer("Vector Add (CPU)");
+
   int good_count = 0;
   int bad_count = 0;
   for (int i = 0; i < n; i++) {
@@ -62,7 +96,7 @@ int main()
     }
   }
   printf("Good Count = %d", good_count);
-  
+
   return 0;
- }
+}
 
