@@ -1,3 +1,4 @@
+%%cu
 // Matrix multiply
 // To run on colab:
 //   !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
@@ -8,6 +9,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 __global__ void matrixMul(int* m1, int* m2, int* p, int n)
 {
@@ -85,6 +87,9 @@ int main()
     }
   }
 
+  double startTime;
+	startTime = (double)clock()/CLOCKS_PER_SEC;
+  
   cudaMalloc(&d_m1, bytes);
   cudaMalloc(&d_m2, bytes);
   cudaMalloc(&d_p, bytes);
@@ -96,13 +101,28 @@ int main()
   dim3 grid_size (n / block_size.x, n / block_size.y);
   matrixMul<<<grid_size, block_size >>>(d_m1, d_m2, d_p, n);
   cudaMemcpy(h_p, d_p, bytes, cudaMemcpyDeviceToHost);
+
+  double endTime;
+	double elapsedTime;
+	endTime = (double)clock()/CLOCKS_PER_SEC;
+	double elapsedTimeGPU = endTime - startTime;
+	printf ("GPU Elapsed time = %6.6f\n", elapsedTimeGPU);
+
   print_slice(h_p, n, 10, 20, 5, 5);
 
   printf("GPU matmult done\n");
 
   int* h_p_seq = (int*)malloc(bytes);
+	startTime = (double)clock()/CLOCKS_PER_SEC;
   matrixMulSeq(h_m1, h_m2, h_p_seq, n);
-  print_slice(h_p, n, 10, 20, 5, 5);
+	endTime = (double)clock()/CLOCKS_PER_SEC;
+	double elapsedTimeCPU = endTime - startTime;
+	printf ("CPU Elapsed time = %6.6f\n", elapsedTimeCPU);
+	double performanceIncrease =  elapsedTimeCPU / elapsedTimeGPU;
+	printf("Performance Improvement = %3.2fx faster\n\n", performanceIncrease);
+
+	print_slice(h_p, n, 10, 20, 5, 5);
+
 
   if (eqMatSeq(h_p, h_p_seq, n, n)) {
     printf("PASS: GPU == CPU\n");

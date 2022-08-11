@@ -107,3 +107,10 @@ Google Colab
 * [Step by step. I started at step 5](https://www.geeksforgeeks.org/how-to-run-cuda-c-c-on-jupyter-notebook-in-google-colaboratory/)
   * Change "> > >" to ">>>" on line 48
 * Ctrl-ML to turn on line numbers
+
+```
+!pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
+%load_ext nvcc_plugin 
+```
+
+
