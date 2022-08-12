@@ -1,8 +1,8 @@
 JETSON NANO
 ===========
 
-I have no idea what I'm doing.  This is my personal playground to play with 
-the Jetson Nano and maybe learn something.
+I don't know what I'm doing, but I'm having a good time.  This is my personal 
+playground to try out my Jetson Nano and hopefully learn something.
 
 Links
 -----
@@ -10,6 +10,7 @@ Links
 * [Instructables]](https://www.instructables.com/Nvidia-Jetson-Nano-Tutorial-First-Look-With-AI-ML/)
 * [Getting Started](https://developer.nvidia.com/embedded/learn/get-started-jetson-nano-devkit)
 * [User Guide](https://developer.nvidia.com/embedded/downloads#?search=Jetson%20Nano%20Developer%20Kit%20User%20Guide)
+* [CUDA Crash Course by CoffeeBeforeArch on Youtube](https://www.youtube.com/watch?v=2NgpYFdsduY&list=PLxNPSjHT5qvtYRVdNN1yDcdSl39uHV_sU)
 
 
 Day 1 - Unbox
