@@ -1,12 +1,28 @@
-!pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
-%load_ext nvcc_plugin
-%%cu
-
-%%cu
-// self_offset.cu
+// !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
+// %load_ext nvcc_plugin
+// %%cu
+// 
+// // Jetson Nano Specs
+// ====================
+// 1 SM
+// 4 Warps / SM (4 total)
+// 32 Cuda Cores per Warp (128 cores total)
+// 640MHz (Base Clock) to 920MHz (Boost Clock) 
+// 4GB LPDDR4
+// 
+// // RTX 2080 Specs
+// ====================
+// 48 streaming multiprocessors (SM)
+// 2 Warps / SM (96 total)
+// 32 CUDA Cores per Warp (3072 cores total)
+// 1.86 GHz
+// 8GB GDDR6
+// 
+// %%cu
+// row_offset.cu
 // This program applies a dynamic offset to a vector
 
-// nvcc histogram.cu -o histogram
+// nvcc row_offset.cu -o row_offsets
 
 #include <cstdlib>
 #include <iostream>
@@ -14,6 +30,7 @@
 #include <stdio.h>
 
 using namespace std;
+
 
 // ============================================================================
 // ============================================================================
@@ -24,7 +41,6 @@ __global__ void rowOffsetKernel(int* imat, int* omat, int NN, int N_COLS)
   extern __shared__ int sharedRow[];
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   bool tidValid = tid < NN;
-  const int MIDPOINT = 512;
   const  int NUM_CAL_VALS = 4;
   int value = 0;
   int rowOffset = 0;
@@ -38,8 +54,7 @@ __global__ void rowOffsetKernel(int* imat, int* omat, int NN, int N_COLS)
       for (int i = 0; i < NUM_CAL_VALS; i++) {
         rowOffset += imat[rowStart+i];
       }
-      rowOffset /= NUM_CAL_VALS;
-      sharedRow[0] = rowOffset - MIDPOINT;
+      sharedRow[0] = rowOffset / NUM_CAL_VALS;
     }
   }
   __syncthreads();
@@ -47,10 +62,10 @@ __global__ void rowOffsetKernel(int* imat, int* omat, int NN, int N_COLS)
   // Subtract Offset
   if (tidValid) {
     value = imat[tid];
-    bool applyOffset = threadIdx.x > NUM_CAL_VALS;
+    bool applyOffset = threadIdx.x >= NUM_CAL_VALS;
     if (applyOffset) {
       rowOffset = sharedRow[0];
-      value -= rowOffset;
+      value = rowOffset;
     }
     omat[tid] = value;
   }
@@ -62,16 +77,15 @@ __global__ void rowOffsetKernel(int* imat, int* omat, int NN, int N_COLS)
 // ============================================================================
 // ============================================================================
 
+
 // Define the kernel that will run on the GPU
 void rowOffsetKernel_CPU(int* imat, int* omat, int NN, int N_COLS)
 {
   int sharedRow[N_COLS];
   // int tid = blockIdx.x * blockDim.x + threadIdx.x;
   // bool tidValid = true; // tid < NN;
-  const int MIDPOINT = 512;
   const  int NUM_CAL_VALS = 4;
   int value = 0;
-
   // Subtract Offset
   for (int r=0; r < 480; r++) {
     int rstart = r * N_COLS;
@@ -79,36 +93,74 @@ void rowOffsetKernel_CPU(int* imat, int* omat, int NN, int N_COLS)
     for (int i = 0; i < NUM_CAL_VALS; i++) {
       rowOffset += imat[rstart+i];
     }
-    rowOffset /= NUM_CAL_VALS;
-    sharedRow[0] = rowOffset - MIDPOINT;
-
+    sharedRow[0] = rowOffset / NUM_CAL_VALS;
+    
+    rowOffset = sharedRow[0];
     for (int i=0; i < N_COLS; i++) {
-      value = imat[i];
-      bool applyOffset = i > NUM_CAL_VALS;
+      value = imat[rstart + i];
+      bool applyOffset = i >= NUM_CAL_VALS;
       if (applyOffset) {
-        rowOffset = sharedRow[0];
-        value -= rowOffset;
+        value = rowOffset;
       }
       omat[rstart + i] = value;
     }
   }
 } // rowOffsetKernel_CPU
 
+
 // ============================================================================
 // ============================================================================
 
-void rand_array(int *a, int N, int MAX)
+
+void randArray(int *a, int N, int MIN, int MAX)
 {
+  int range = MAX - MIN + 1;
   for (int i = 0; i < N; i++) {
-    a[i] = rand() % MAX;
+    a[i] = (rand() % range) + MIN;
   }
 }
 
-void init_array(int *a, int N, int value)
+
+void initArray(int *a, int N, int value)
 {
   for (int i = 0; i < N; i++) {
     a[i] = value;
   }
+}
+
+
+// return true if equal
+bool eqArray(int* a, int* b, int N)
+{
+  for (int i = 0; i < N; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+ 
+
+
+int findMin(int *a, int N)
+{
+  int min = a[0];
+  for (int i = 1; i < N; i++) {
+    if (a[i] < min) {
+      min = a[i];
+    }
+  }
+  return min;
+}
+
+
+int findMax(int *a, int N)
+{
+  int max = a[0];
+  for (int i = 1; i < N; i++) {
+    if (a[i] > max) {
+      max = a[i];
+    }
+  }
+  return max;
 }
 
 
@@ -124,6 +176,7 @@ void stopTimer(char* title)
   double elapsedTime = t2 - t1;
   printf ("%s: Elapsed time = %6.6f\n", title, elapsedTime);
 }
+
 
 void printSlice(char* title, int* mat2d, int n, int r1, int c1, int height, int width)
 {
@@ -147,41 +200,45 @@ int main()
   int NN = N_ROWS * N_COLS;
   size_t bytes = NN * sizeof(int);
 
-  int *imat, *omat;
+  int *imat, *omat_gpu, *omat_cpu;
   cudaMallocManaged(&imat, bytes);
-  cudaMallocManaged(&omat, bytes);
+  cudaMallocManaged(&omat_gpu, bytes);
+  cudaMallocManaged(&omat_cpu, bytes);
 
   // Load imat array with random data
-  int MAX = 123;
-  rand_array(imat, NN, MAX);
+  int MIN = -128;
+  int MAX = 127;
 
-  // Set the dimensions of our CTA (Cooperative Thread Array) and Grid
-  // CTA is another name for Threadblock (or just Block) and is similar to an
-  // OpenCL Workgroup.
-
-  // A group of threads is called a CUDA block (CTA). CUDA blocks
-  // are grouped into a grid. A KERNEL runs on a GRID of BLOCKS of THREADS.
-  // A CUDA Block is executed on one streaming multiprocessor(SM).
-
-  int THREADS = 512; // typically a value between 128 and 1024
+  int THREADS = 660; // typically a value between 128 and 1024
   int BLOCKS = (NN + THREADS - 1) / THREADS;
   size_t SHMEM_SIZE = N_COLS * sizeof(int);
 
-  for (int ii=0; ii < 5; ii++) {
+  // printSlice("imat", imat, N_COLS, 0, 0, 8, 8);
+
+  for (int ii=0; ii < 10; ii++) {
+    randArray(imat, NN, MIN, MAX);
+    printf("imat min = %d, max = %d\n", findMin(imat, NN), findMax(imat, NN));
+
     startTimer();
-    rowOffsetKernel<<<BLOCKS, THREADS, SHMEM_SIZE>>>(imat, omat, NN, N_COLS);
+    rowOffsetKernel<<<BLOCKS, THREADS, SHMEM_SIZE>>>(imat, omat_gpu, NN, N_COLS);
     // Wait for all devices to finish
     cudaDeviceSynchronize();
     stopTimer("Row Offset (GPU)");
-    printSlice("imat", imat, N_COLS, 0, 0, 8, 8);
-    printSlice("omat", omat, N_COLS, 0, 0, 8, 8);
+    // printSlice("imat", imat, N_COLS, 0, 0, 8, 8);
+    // printSlice("omat", omat_gpu, N_COLS, 0, 0, 8, 8);
 
     startTimer();
-    rowOffsetKernel_CPU(imat, omat, NN, N_COLS);
-    // Wait for all devices to finish
-    cudaDeviceSynchronize();
+    rowOffsetKernel_CPU(imat, omat_cpu, NN, N_COLS);
     stopTimer("Row Offset (CPU)");
-    printSlice("omat", omat, N_COLS, 0, 0, 8, 8);
+    // printSlice("imat", imat, N_COLS, 0, 0, 8, 8);
+    // printSlice("omat", omat_cpu, N_COLS, 0, 0, 8, 8);
+
+    if (eqArray(omat_gpu, omat_cpu, NN)) {
+        printf("PASS: GPU == CPU");
+    } else {
+        printf("FAIL: GPU != CPU");
+    }
+
   } // for
 
   return 0;

@@ -1,15 +1,24 @@
+!pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
+%load_ext nvcc_plugin
+%%cu
+
 %%cu
 // Matrix multiply
 // To run on colab:
 //   !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
 //   %load_ext nvcc_plugin
 //   %%cu
-// To run from command line:
-//   nvcc -o matrix_mult.exe matrix_mult.cu
+// To compile from command line:
+//   nvcc matrix_mult.cu -o matrix_mult
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+
+// ==========================================================================
+// ==========================================================================
+// Kernel
 
 __global__ void matrixMul(int* m1, int* m2, int* p, int n)
 {
@@ -41,18 +50,12 @@ void matrixMulSeq(int* m1, int* m2, int* p, int n)
 }
 
 
-void print_slice(int* mat2d, int n, int r1, int c1, int height, int width)
-{
-  for (int i = r1; i < r1+width; i++) {
-    for (int j = c1; j < c1+5; j++) {
-      printf("[%d,%d]=%6d ", i, j, mat2d[i*n+j]);
-    }
-    printf("\n");
-  }
-}
+// ==========================================================================
+// ==========================================================================
+// cuda_utils.cu
 
 
-bool eqMatSeq(int* m1, int* m2, int r, int c)
+bool cmpMat2d(int* m1, int* m2, int r, int c)
 {
   for (int i = 0; i < r; i++) {
     for (int j = 0; j < c; j++) {
@@ -63,22 +66,46 @@ bool eqMatSeq(int* m1, int* m2, int r, int c)
 }
 
 
+double t1;
+void startTimer()
+{
+  t1 = (double)clock()/CLOCKS_PER_SEC;
+}
+
+
+double stopTimer(char* title)
+{
+  double t2 = (double)clock()/CLOCKS_PER_SEC;
+  double elapsedTime = t2 - t1;
+  printf ("%s: Elapsed time = %6.6f\n", title, elapsedTime);
+ return elapsedTime;
+}
+
+
+void printSlice(char* title, int* mat2d, int n, int r1, int c1, int height, int width)
+{
+  printf("%s\n", title);
+  for (int i = r1; i < r1+height; i++) {
+    for (int j = c1; j < c1+width; j++) {
+      printf("[%d,%d]=%6d ", i, j, mat2d[i*n+j]);
+    }
+    printf("\n");
+  }
+ printf("\n");
+}
+
+
+// ==========================================================================
+// ==========================================================================
+// Main
+
 int main()
 {
   int n = 1 << 10;
-  int* h_m1;
-  int* h_m2;
-  int* h_p;
-
-  int* d_m1;
-  int* d_m2;
-  int* d_p;
-
   size_t bytes = n * n * sizeof(int);
-
-  h_m1 = (int*)malloc(bytes);
-  h_m2 = (int*)malloc(bytes);
-  h_p = (int*)malloc(bytes);
+  int* h_m1 = (int*)malloc(bytes);
+  int* h_m2 = (int*)malloc(bytes);
+  int* h_p = (int*)malloc(bytes);
 
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < n; j++) {
@@ -87,13 +114,26 @@ int main()
     }
   }
 
-  double startTime;
-	startTime = (double)clock()/CLOCKS_PER_SEC;
-  
+  printSlice("M1", h_m1, n, 10, 20, 5, 5);
+  printSlice("M2", h_m2, n, 10, 20, 5, 5);
+
+  // ------------------------------------------------------------------------
+  // Run on CPU
+  int* h_p_cpu = (int*)malloc(bytes);
+  startTimer();
+  matrixMulSeq(h_m1, h_m2, h_p_cpu, n);
+  double elapsedTimeCPU = stopTimer("CPU TIME");
+  printSlice("Product (CPU))", h_p_cpu, n, 10, 20, 5, 5); 
+
+  // ------------------------------------------------------------------------
+  // Accelerate with GPU
+  startTimer();
+  int* d_m1;
+  int* d_m2;
+  int* d_p;
   cudaMalloc(&d_m1, bytes);
   cudaMalloc(&d_m2, bytes);
   cudaMalloc(&d_p, bytes);
-
   cudaMemcpy(d_m1, h_m1, bytes, cudaMemcpyHostToDevice);
   cudaMemcpy(d_m2, h_m2, bytes, cudaMemcpyHostToDevice);
   int threads_per_block = 16;
@@ -101,30 +141,17 @@ int main()
   dim3 grid_size (n / block_size.x, n / block_size.y);
   matrixMul<<<grid_size, block_size >>>(d_m1, d_m2, d_p, n);
   cudaMemcpy(h_p, d_p, bytes, cudaMemcpyDeviceToHost);
-
-  double endTime;
-	double elapsedTime;
-	endTime = (double)clock()/CLOCKS_PER_SEC;
-	double elapsedTimeGPU = endTime - startTime;
-	printf ("GPU Elapsed time = %6.6f\n", elapsedTimeGPU);
-
-  print_slice(h_p, n, 10, 20, 5, 5);
-
+  double elapsedTimeGPU = stopTimer("GPU TIME");
+  printSlice("Product (GPU)", h_p, n, 10, 20, 5, 5);
   printf("GPU matmult done\n");
 
-  int* h_p_seq = (int*)malloc(bytes);
-	startTime = (double)clock()/CLOCKS_PER_SEC;
-  matrixMulSeq(h_m1, h_m2, h_p_seq, n);
-	endTime = (double)clock()/CLOCKS_PER_SEC;
-	double elapsedTimeCPU = endTime - startTime;
-	printf ("CPU Elapsed time = %6.6f\n", elapsedTimeCPU);
-	double performanceIncrease =  elapsedTimeCPU / elapsedTimeGPU;
-	printf("Performance Improvement = %3.2fx faster\n\n", performanceIncrease);
-
-	print_slice(h_p, n, 10, 20, 5, 5);
+  // ------------------------------------------------------------------------
+ // Wrap up
+  double performanceIncrease =  elapsedTimeCPU / elapsedTimeGPU;
+  printf("Performance Improvement = %3.2fx faster\n\n", performanceIncrease);
 
 
-  if (eqMatSeq(h_p, h_p_seq, n, n)) {
+  if (cmpMat2d(h_p, h_p_cpu, n, n)) {
     printf("PASS: GPU == CPU\n");
   } else {
     printf("FAIL: GPU != CPU\n");
@@ -133,5 +160,4 @@ int main()
 
   return 0;
 }
-
 
