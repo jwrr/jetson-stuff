@@ -31,7 +31,7 @@
 
 using namespace std;
 
-#define DATA_TYPE int
+#define DATA_TYPE float
 
 // ============================================================================
 // ============================================================================
@@ -184,7 +184,7 @@ void printSlice(char* title, DATA_TYPE* mat2d, int n, int r1, int c1, int height
   printf("%s\n", title);
   for (int i = r1; i < r1+height; i++) {
     for (int j = c1; j < c1+width; j++) {
-      printf("[%d,%d]=%6d ", i, j, mat2d[i*n+j]);
+      printf("[%d,%d]=%6f ", i, j, mat2d[i*n+j]);
     }
     printf("\n");
   }
@@ -218,7 +218,7 @@ int main()
 
   for (int ii=0; ii < 10; ii++) {
     randArray(imat, NN, MIN, MAX);
-    printf("imat min = %d, max = %d\n", findMin(imat, NN), findMax(imat, NN));
+    printf("imat min = %f, max = %f\n", findMin(imat, NN), findMax(imat, NN));
 
     startTimer();
     rowOffsetKernel<<<BLOCKS, THREADS, SHMEM_SIZE>>>(imat, omat_gpu, NN, N_COLS);
@@ -235,9 +235,9 @@ int main()
     // printSlice("omat", omat_cpu, N_COLS, 0, 0, 8, 8);
 
     if (eqArray(omat_gpu, omat_cpu, NN)) {
-        printf("PASS: GPU == CPU");
+        printf("PASS: GPU == CPU\n");
     } else {
-        printf("FAIL: GPU != CPU");
+        printf("FAIL: GPU != CPU\n");
     }
 
   } // for

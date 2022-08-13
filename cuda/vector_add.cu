@@ -1,10 +1,12 @@
+/*
 !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
 %load_ext nvcc_plugin
 %%cu
 
 %%cu
+*/
 // vector add
-// nvcc -o vector_add.exe vector_add.cu
+// nvcc vector_add.cu -o vector_add.exe
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,7 +47,7 @@ void stopTimer(char* title)
 
 int main()
 {
-  int n = 1 << 28;
+  int n = 1 << 27;
 
   int* h_a;
   int* h_b;
@@ -95,7 +97,7 @@ int main()
       good_count++;
     }
   }
-  printf("Good Count = %d", good_count);
+  printf("Good Count = %d\n", good_count);
 
   return 0;
 }

@@ -1,4 +1,3 @@
-%%cu
 // Add an offset and then apply a gain
 // nvcc offset_gain.cu -o offset_gain
 

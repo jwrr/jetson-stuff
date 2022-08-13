@@ -1,4 +1,3 @@
-%%cu
 // image_correction.cu
 // This program applies some offsets and a scaling factor.
 // GPU appears to be ~1.5x faster than CPU.
@@ -230,9 +229,9 @@ int main()
     // printSlice("omat", omat_cpu, N_COLS, 0, 0, 8, 8);
 
     if (eqArray(omat_gpu, omat_cpu, NN)) {
-        printf("PASS: GPU == CPU");
+        printf("PASS: GPU == CPU\n");
     } else {
-        printf("FAIL: GPU != CPU");
+        printf("FAIL: GPU != CPU\n");
     }
 
   } // for

@@ -234,9 +234,9 @@ int main()
     // printSlice("omat", omat_cpu, N_COLS, 0, 0, 8, 8);
 
     if (eqArray(omat_gpu, omat_cpu, NN)) {
-        printf("PASS: GPU == CPU");
+        printf("PASS: GPU == CPU\n");
     } else {
-        printf("FAIL: GPU != CPU");
+        printf("FAIL: GPU != CPU\n");
     }
 
   } // for

@@ -1,8 +1,10 @@
+/*
 !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
 %load_ext nvcc_plugin
 %%cu
 
 %%cu
+*/
 // Matrix multiply
 // To run on colab:
 //   !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git

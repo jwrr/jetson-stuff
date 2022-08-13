@@ -1,6 +1,8 @@
+/*
 !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
 %load_ext nvcc_plugin
 %%cu
+*/
 // histogram.cu
 // This program computes a histogram on the GPU using CUDA
 // By: Nick from CoffeeBeforeArch. Retyped by jwrr.
@@ -77,7 +79,7 @@ void init_array(int *a, int N, int value)
 
 int main()
 {
-  int N = 1 << 28;
+  int N = 1 << 25;
   size_t bytes = N * sizeof(int);
   int N_bins = 10;
   size_t bytes_bins = N_bins * sizeof(int);

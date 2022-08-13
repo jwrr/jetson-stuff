@@ -1,4 +1,3 @@
-%%cu
 // Convolution
 // To run on colab:
 //   !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
