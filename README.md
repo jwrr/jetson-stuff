@@ -96,6 +96,12 @@ OpenCV modules:
 exit()
 ```
 
+WIFI on Jetson NANO
+-------------------
+
+* [Sparkfun Tutorial](https://learn.sparkfun.com/tutorials/adding-wifi-to-the-nvidia-jetson/all) - Good step-by-step.
+
+
 Canny Edge Detection (JETSONHACKS)
 ----------------------------------
 
