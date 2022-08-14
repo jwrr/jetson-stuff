@@ -96,11 +96,75 @@ OpenCV modules:
 exit()
 ```
 
-WIFI on Jetson NANO
+WIFI on Jetson Nano
 -------------------
 
 * [Sparkfun Tutorial](https://learn.sparkfun.com/tutorials/adding-wifi-to-the-nvidia-jetson/all) - Good step-by-step.
+* It is very slow... needs debug, but going back to cat5 cable for now.
 
+Arducam on Jetson Nano
+----------------------
+
+* Arducam MP IMX219 Camera Module
+  * No software driver installation. Uses the Jetson Jetpack Nano camera driver.
+* To roll back to the original Jetson Nano camera driver. This is only needed if you have a different driver installed.
+
+```
+sudo dpkg -r arducam-nvidia-l4t-kernel
+```
+
+* Check connection
+
+```
+ls /dev/video*
+sudo apt install v4l-utils ### not needed. already installed
+v4l2-ctl --list-formats-ext
+
+``` 
+
+* Run Camera
+  * [Taking first picture with CSI](https://developer.nvidia.com/embedded/learn/tutorials/first-picture-csi-usb-camera)
+```
+nvgstcapture-1.0
+  BOOM!!! VIDEO WORKS
+  j<enter> captures an image
+  q<enter> quit
+  1<enter> to start recording hmmm... doesn't work
+  0<enter> to stop recording
+
+### Capture 10 seconds of video to file
+nvgstcapture-1.0 --mode=2 --automate --capture-auto
+
+IGNORE BELOW - NEEDS DEBUG
+sudo apt install python3-pip
+pip3 install v4l2-fix
+git clone https://github.com/ArduCAM/MIPI_Camera.git
+cd MIPI_Camera/Jetson/Jetvariety/example
+python3 arducam_displayer.py -h
+python3 arducam_displayer.py -d 0
+  shows green screen?
+
+sudo apt install vlc
+```
+
+* Use nVideo's video-viewer
+
+```
+git clone https://github.com/dusty-nv/jetson-utils.git
+cd jetson-utils
+mkdir builds
+cd builds
+cmake ..
+make
+cd ./aarch64/bin
+./video-viewer csi://0
+```
+
+* To reboot or power off
+```
+sudo poweroff
+sudo reboot
+```
 
 Canny Edge Detection (JETSONHACKS)
 ----------------------------------
