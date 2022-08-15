@@ -62,6 +62,7 @@ $ls /usr/local/lib
 libopencv_manyfiles.so
 ```
 
+
 Day 5 - Python and OpenCV
 -----------------
 
@@ -95,6 +96,77 @@ OpenCV modules:
 
 exit()
 ```
+
+MIPI CSI Camera with OpenCV and Gstreamer
+---------------------------
+
+* [Jetson Nano + Raspberry Pi Camera by JetsonHacks](https://jetsonhacks.com/2019/04/02/jetson-nano-raspberry-pi-camera/), [github code](https://github.com/JetsonHacksNano/CSI-Camera)
+
+* [GStreamer by TopTechBoy on Youtube](https://www.youtube.com/watch?v=_yU1kfcC6rY)
+
+```
+sudo apt install 44l-utils
+
+## FIRST TRY WITH AUDIO
+gst-launch-1.0 audiotestsrc ! alsasink
+gst-inspect-1.0 audiotestsrc
+gst-launch-1.0 audiotestsrc wave=1 freq=300 volume=1 ! alsasink
+caps is capabilities
+gst-inspect-1.0 alsasink
+## Set caps for previous module (caps are separated by commas)
+gst-launch-1.0 audiotestsrc wave=1 freq=300 volume=1 ! audio/x-raw,format=U8  ! alsasink
+
+### The following fails because alsasink doesn't support U18LE so....
+gst-launch-1.0 audiotestsrc wave=1 freq=300 volume=1 ! audio/x-raw,format=U18LE | audioconvert  ! alsasink
+### So... add an audioconverter to the pipeline
+gst-launch-1.0 audiotestsrc wave=1 freq=300 volume=1 ! audio/x-raw,format=U18LE | audioconvert  ! alsasink
+### Usually you need to inspect the audio converters caps
+gst-inspect-1.0 audioconvert to get input/output caps
+
+gst-launch-1.0 audiotestsrc wave=1 freq=300 volume=1 ! audio/x-raw,format=U18LE | audioconvert ! audio/x-raw,format=U8 ! alsasink
+
+## NOW TRY WITH VIDEO
+gst-launch-1.0 videotestsrc ! ximagesink
+gst-inspect-1.0 videotestsrc
+gst-launch-1.0 videotestsrc pattern=11 ! ximagesink
+gst-launch-1.0 videotestsrc pattern=0 ! video/x-raw,format=BGR  ! ximagesink
+gst-inspect-1.0 ximagesink
+gst-launch-1.0 videotestsrc pattern=0 ! video/x-raw,format=BGR  ! autovideoconvert  ! ximagesink
+gst-launch-1.0 videotestsrc pattern=0 ! video/x-raw,format=BGR  ! autovideoconvert  ! videoconvert ! video/x-rww,width=1280,height=960  ! ximagesink
+gst-inspect-1.0 videoconvert
+gst-launch-1.0 videotestsrc pattern=0 ! video/x-raw,format=BGR  ! autovideoconvert  ! videoconvert ! video/x-rww,width=1280,height=960,framerate=30/1  ! ximagesink
+gst-launch-1.0 videotestsrc pattern=0 ! video/x-raw,format=BGR  ! autovideoconvert  ! videoconvert ! video/x-rww,width=1280,height=960,framerate=1/2  ! ximagesink
+
+gst-launch-1.0 nvarguscamerasrc ! autovideoconvert ! ximagesink
+gst-launch-1.0 nvarguscamerasrc ! nvvidconv flip-method=2 ! video/x-raw,width=1280,height=840 ! autovideoconvert ! ximagesink
+gst-launch-1.0 nvarguscamerasrc ! nvvidconv flip-method=2 ! video/x-raw,width=640,height=480 ! autovideoconvert ! ximagesink
+
+gst-inspect-1.0 nvvidconv
+gst-launch-1.0 nvarguscamerasrc ! video/x-raw  ! nvvidconv flip-method=2 ! video/x-raw,width=640,height=480 ! autovideoconvert ! ximagesink
+
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  ximagesink
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  agingtv ! ximagesink
+gst-inspect-1.0 agingtv
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  agingtv scratchlines=20 ! ximagesink
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  agingtv scratchlines=20 ! coloreffects preset=sepia ! ximagesink
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
 
 WIFI on Jetson Nano
 -------------------
