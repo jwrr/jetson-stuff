@@ -1,0 +1,2 @@
+nvcc -I/usr/lib/opencv -I/usr/include/opencv4 camera_hipass.cu -L/usr/lib -lopencv_core -lopencv_highgui -lopencv_videoio -lopencv_imgproc -o camera_hipass.exe
+

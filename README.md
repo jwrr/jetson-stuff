@@ -105,8 +105,8 @@ MIPI CSI Camera with OpenCV and Gstreamer
 * [GStreamer by TopTechBoy on Youtube](https://www.youtube.com/watch?v=_yU1kfcC6rY)
 
 ```
-sudo apt install 44l-utils
-
+sudo apt install v4l-utils  ## already installed
+sudo apt install gstreamer1.0-opencv # for more plugins such as edgedetect, blur... 
 ## FIRST TRY WITH AUDIO
 gst-launch-1.0 audiotestsrc ! alsasink
 gst-inspect-1.0 audiotestsrc
@@ -144,12 +144,31 @@ gst-launch-1.0 nvarguscamerasrc ! nvvidconv flip-method=2 ! video/x-raw,width=64
 gst-inspect-1.0 nvvidconv
 gst-launch-1.0 nvarguscamerasrc ! video/x-raw  ! nvvidconv flip-method=2 ! video/x-raw,width=640,height=480 ! autovideoconvert ! ximagesink
 
-gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  ximagesink
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width=640,height=480 !  ximagesink
 gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  agingtv ! ximagesink
 gst-inspect-1.0 agingtv
 gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  agingtv scratchlines=20 ! ximagesink
 gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  agingtv scratchlines=20 ! coloreffects preset=sepia ! ximagesink
+gst-launch-1.0 nvarguscamerasrc ! autovideoconvert ! ximagesink
 ```
+
+GSTreamer OpenCV Plugins
+--------------------
+
+```
+EDGEDETECT
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3820, height=2464, framerate=21/1, format=NV12' ! nvvidconv flip-method=0 ! 'video/x-raw,width=960, height=616' ! nvvidconv ! autovideoconvert ! edgedetect ! nveglglessink -e
+
+SMOOTH
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3820, height=2464, framerate=21/1, format=NV12' ! nvvidconv flip-method=0 ! 'video/x-raw,width=640, height=413' ! nvvidconv ! autovideoconvert ! cvsmooth ! videoconvert ! video/x-raw,format=RGB  ! nveglglessink
+
+CONTRAST ENHANCE
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3820, height=2464, framerate=21/1, format=NV12' ! nvvidconv flip-method=0 ! 'video/x-raw,width=640, height=413' ! nvvidconv ! autovideoconvert ! cvequalizehist ! videoconvert ! video/x-raw,format=RGB  ! nveglglessink
+```
+
+MOTION CELLS
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3820, height=2464, framerate=21/1, format=NV12' ! nvvidconv flip-method=0 ! 'video/x-raw,width=640, height=413' ! nvvidconv ! autovideoconvert ! motioncells ! videoconvert ! video/x-raw,format=RGB  ! nveglglessink
+
 
 More GSTreamer
 --------------
