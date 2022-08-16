@@ -1,4 +1,4 @@
-%%cu
+// %%cu
 // Convolution
 // To run on colab:
 //   !pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
@@ -23,26 +23,28 @@ __global__ void conv_GPU(int* img, int* kern, int* result, int ROWS, int COLS, i
   extern __shared__ DATA_TYPE sharedRow[];
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   int NN = ROWS * COLS;
-  // if (tid < 10) printf("TID=%d, NN=%d\n", tid, NN);
+  if (tid < NN) {
 
-  int row = blockIdx.x * blockDim.x;
-  int col = threadIdx.x;
- 
-  int offset = KSIZE / 2; 
-  int r = row - offset;
-  int clow = col - offset;
-  int sum = 0;
-  for (int krow = 0; krow < KSIZE; krow++) {
-    int c = clow;
-    for (int kcol = 0; kcol < KSIZE; kcol++) {
-      bool valid = (r >= 0 && c >= 0 && r < ROWS && c < COLS); 
-      int val = valid ? img[r*COLS+c] : img[tid];
-      sum += kern[krow*KSIZE+kcol] * val;
-      c++;
+    int row = (blockIdx.x * blockDim.x) / COLS;
+    int col = threadIdx.x;
+  
+    int offset = KSIZE / 2; 
+    int r = row - offset;
+    int clow = col - offset;
+    int sum = 0;
+    for (int krow = 0; krow < KSIZE; krow++) {
+      int c = clow;
+      for (int kcol = 0; kcol < KSIZE; kcol++) {
+        int index = r*COLS + c;
+        bool valid = (r >= 0 && c >= 0 && r < ROWS && c < COLS); 
+        int val = valid ? img[index] : img[tid];
+        sum += kern[krow*KSIZE+kcol] * val;
+        c++;
+      }
+      r++;
     }
-    r++;
+    result[tid] = sum / (KSIZE * KSIZE);
   }
-  result[tid] = sum / (KSIZE * KSIZE);
 } // conv
 
 
@@ -97,10 +99,29 @@ void randArray(int *a, int N, int MIN, int MAX)
   }
 }
 
-bool equalArray(int* a, int* b, int NN)
+
+void incrArray(int *a, int NN, int MIN, int MAXP1)
 {
+  int tmp = MIN;
   for (int i = 0; i < NN; i++) {
-    if (a[i] != b[i]) {return false;}
+    a[i] = tmp;
+    tmp++;
+    if (tmp == MAXP1) {
+      tmp = MIN;
+    }
+  }
+}
+
+
+bool equalArray(int* a, int* b, int NN, int XX)
+{
+  int diffCnt = 0;
+  for (int i = 0; i < NN; i++) {
+    if (a[i] != b[i]) {
+      if (diffCnt >= XX) {return false;}
+      diffCnt++;
+      printf("%3d: [%d]=(%d, %d);\n", diffCnt, i, a[i], b[i]);
+    }
   }
   return true;
 }
@@ -143,6 +164,7 @@ void printSlice(char* title, int* mat2d, int n, int r1, int c1, int height, int 
 
 int main()
 {
+  printf("hello\n");
   int ROWS = 480;
   int COLS = 660;
   int NN = ROWS * COLS;
@@ -158,18 +180,21 @@ int main()
   int *kern;
   size_t kernBytes = KSIZE * sizeof(int);
   cudaMallocManaged(&kern, kernBytes);
-  initArray(kern, NK, 0); // box filter
-  kern[4] = 9;  // 0 1 2 3  #4#   5 6 7 8
+  initArray(kern, NK, 1); // box filter
+  //kern[1] = 3;  // 0 1 2 3  #4#   5 6 7 8
+  //kern[4] = 3;  // 0 1 2 3  #4#   5 6 7 8
+  //kern[7] = 3;  // 0 1 2 3  #4#   5 6 7 8
 
   int MIN = -128;
   int MAX = 127;
   
-  for (int ii = 0; ii < 10; ii++) {
+  for (int ii = 0; ii < 100; ii++) {
   
+    // incrArray(img,  NN, 0, 0);
     randArray(img,  NN, MIN, MAX);
-    // randArray(kern, NK, 0, 4);
+    randArray(kern, NK, 0, 4);
   
-    //  printSlice("img", img, COLS, 10, 20, 5, 5);
+    // printSlice("img", img, COLS, 10, 20, 5, 5);
   
     // ------------------------------------------------------------------------
     // Run on CPU
@@ -189,14 +214,14 @@ int main()
     conv_GPU<<<BLOCKS, THREADS, SHMEM_SIZE>>>(img, kern, result_gpu, ROWS, COLS, KSIZE);
     cudaDeviceSynchronize();
     double elapsedTimeGPU = stopTimer("GPU TIME", false);
-    //  printSlice("Result (GPU)", result_gpu, COLS, 10, 20, 5, 5);
+    // printSlice("Result (GPU)", result_gpu, COLS, 10, 20, 5, 5);
     //  printf("GPU matmult done\n");
   
     // ------------------------------------------------------------------------
     // Results
    
     printf("%3d: ", ii);
-    if (equalArray(result_gpu, result_cpu, NN)) {
+    if (equalArray(result_gpu, result_cpu, NN, 10)) {
       printf("PASS: GPU == CPU ");
     } else {
       printf("FAIL: GPU != CPU ");
