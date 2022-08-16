@@ -175,7 +175,7 @@ int main()
   cudaMallocManaged(&result_gpu, BYTES);
   cudaMallocManaged(&result_cpu, BYTES);
 
-  int KSIZE = 3;
+  int KSIZE = 11;
   int NK = KSIZE * KSIZE;
   int *kern;
   size_t kernBytes = KSIZE * sizeof(int);
@@ -188,7 +188,7 @@ int main()
   int MIN = -128;
   int MAX = 127;
   
-  for (int ii = 0; ii < 100; ii++) {
+  for (int ii = 0; ii < 10; ii++) {
   
     // incrArray(img,  NN, 0, 0);
     randArray(img,  NN, MIN, MAX);

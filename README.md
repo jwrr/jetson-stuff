@@ -149,23 +149,12 @@ gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=24
 gst-inspect-1.0 agingtv
 gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  agingtv scratchlines=20 ! ximagesink
 gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM),width=3264,height=2464,framerate=21/1' ! nvvidconv flip-method=2 ! video/x-raw,width-640,height=480 !  agingtv scratchlines=20 ! coloreffects preset=sepia ! ximagesink
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
+
+More GSTreamer
+--------------
+
+* [Hello World](https://gstreamer.freedesktop.org/documentation/application-development/basics/helloworld.html?gi-language=c)
 
 
 WIFI on Jetson Nano
