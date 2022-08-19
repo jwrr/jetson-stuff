@@ -1,0 +1,3 @@
+nvcc -I/usr/lib/opencv -I/usr/include/opencv4 histeq.cu \
+-L/usr/lib -lopencv_core -lopencv_highgui -lopencv_videoio -lopencv_imgproc \
+-lopencv_imgcodecs -o histeq.exe

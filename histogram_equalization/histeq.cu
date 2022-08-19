@@ -22,6 +22,15 @@ __global__ void find_minmax_gpu(unsigned char* img, int N_CHAN, int* Min, int* M
   }
 }
 
+
+__device__ int new_pixel_value(int Value, int Min, int Max)
+{
+  int Target_Min = 0;
+  int Target_Max = 255;
+  return (Target_Min + (Value - Min) * (int)((Target_Max - Target_Min)/(Max - Min)));
+}
+
+
 __global__ void histeq_gpu(unsigned char* img, int N_CHAN, int* Min, int* Max)
 {
   int x = blockIdx.x;
@@ -30,13 +39,6 @@ __global__ void histeq_gpu(unsigned char* img, int N_CHAN, int* Min, int* Max)
   for (int i = 0; i < N_CHAN; i++) {
     img[pixel_id + i] = new_pixel_value(img[pixel_id + i], Min[i], Max[i]);
   }
-}
-
-__device__ int new_pixel_value(int Value, int Min, int Max)
-{
-  int Target_Min = 0;
-  int Target_Max = 255;
-  return (Target_Min + (Value - Min) * (int)((Target_Max - Target_Min)/(Max - Min)));
 }
 
 // ============================================================================
@@ -77,11 +79,32 @@ void histeq_wrapper(unsigned char* img, int Height, int Width, int N_CHAN)
 
 int main()
 {
-  Mat img = cv::imread("Low_Contrast.jpg", 0); // Read Gray Image
+  // image from Wikipedia: https://en.wikipedia.org/wiki/Histogram_equalization
+  string img_path = "/home/jwrr/github/jetson-stuff/histogram_equalization/low_contrast.jpg";
+  cv::Mat img_orig = cv::imread(img_path);
+  cv::Mat img = cv::imread(img_path);
+  if (img.empty()) {
+    std::cout << "Error - Could not read image: " << img_path << std::endl;
+    return 1;
+  }
   cout << "Image Size: " << img.cols << "x" << img.rows << 
           ", Image Channels: " << img.channels() << endl;
   histeq_wrapper(img.data, img.rows, img.cols, img.channels());
-  cv::imwrite("Histogram_Image.png", img);
+  cv::imwrite("high_contrast.png", img);
+
+  string windowName1 = "Low Contrast";
+  cv::namedWindow(windowName1);
+  cv::moveWindow(windowName1,100,100);
+  cv::imshow(windowName1, img_orig);
+
+  string windowName2 = "High Contrast";
+  cv::namedWindow(windowName2);
+  cv::moveWindow(windowName2,450,100);
+  cv::imshow(windowName2, img);
+
+  cv::waitKey(0); // Wait for any keystroke in the window
+  cv::destroyWindow(windowName1);
+  cv::destroyWindow(windowName2);
   return 0;
 }
 
