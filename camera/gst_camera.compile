@@ -1,0 +1,4 @@
+nvcc -I/usr/lib/opencv -I/usr/include/opencv4 gst_camera.cpp \
+-L/usr/lib -lopencv_core -lopencv_highgui -lopencv_videoio -lopencv_imgproc \
+-o gst_camera.exe
+
