@@ -59,9 +59,14 @@ void linearstretch_gpu(unsigned char* img, int n_chan, int* min, int* max)
 __global__
 void make_low_contrast_for_testing_gpu(uint8_t *x, uint8_t a, int n)
 {
- int i = blockIdx.x*blockDim.x + threadIdx.x;
- if (i < n) x[i] = x[i] >> a;
-}
+  int i = blockIdx.x*blockDim.x + threadIdx.x;
+  if (i < n) {
+    uint8_t tmp = x[i] >> a;
+    uint8_t offset = tmp * (a-1) / (2*a);
+
+    x[i] = offset + tmp;
+  }
+};
 
 
 // ============================================================================
@@ -174,7 +179,7 @@ int main()
 
         cv::Mat low_contrast_img = vga_img.clone();
         make_low_contrast_for_testing_wrapper(low_contrast_img);
-        // linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
+        linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
 
         // cv::Mat gray8_img2;
         // gray16_img.convertTo(gray8_img2, CV_8U);
