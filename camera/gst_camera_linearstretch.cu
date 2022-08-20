@@ -39,7 +39,7 @@ int new_pixel_value(int pixval, int min, int max)
   int pixval_offset = pixval - min;
   int pixval_scaled = pixval_offset * output_rise / input_run;
   int output_pixval = output_min + pixval_scaled;
-  if (output_pixval > output_max) then output_pixval = output_max;
+  if (output_pixval > output_max) output_pixval = output_max;
   return output_pixval;
 }
 
@@ -57,7 +57,7 @@ void linearstretch_gpu(unsigned char* img, int n_chan, int* min, int* max)
 
 
 __global__
-void make_low_contrast_for_testing_gpu(int n, uint8_t a, uint8_t *x)
+void make_low_contrast_for_testing_gpu(uint8_t *x, uint8_t a, int n)
 {
  int i = blockIdx.x*blockDim.x + threadIdx.x;
  if (i < n) x[i] = x[i] >> a;
@@ -100,12 +100,12 @@ void linearstretch_wrapper(unsigned char* img, int height, int width, int n_chan
 
 void make_low_contrast_for_testing_wrapper(cv::Mat img)
 {
-  int N = vga_img.cols * vga_img.rows;
+  int N = img.cols * img.rows;
   uint8_t *d_x;
   cudaMalloc(&d_x, N*sizeof(uint8_t));
-  cudaMemcpy(d_x, vga_img.data, N*sizeof(uint8_t), cudaMemcpyHostToDevice);
-  make_low_contrast_for_testing_gpu<<<(N+255)/256, 256>>>(N, 4, d_x);
-  cudaMemcpy(low_contrast_img.data, d_y, N*sizeof(uint8_t), cudaMemcpyDeviceToHost);
+  cudaMemcpy(d_x, img.data, N*sizeof(uint8_t), cudaMemcpyHostToDevice);
+  make_low_contrast_for_testing_gpu<<<(N+255)/256, 256>>>(d_x, 4, N);
+  cudaMemcpy(img.data, d_x, N*sizeof(uint8_t), cudaMemcpyDeviceToHost);
   cudaFree(d_x);
 }
 
@@ -174,7 +174,7 @@ int main()
 
         cv::Mat low_contrast_img = vga_img.clone();
         make_low_contrast_for_testing_wrapper(low_contrast_img);
-        linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
+        // linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
 
         // cv::Mat gray8_img2;
         // gray16_img.convertTo(gray8_img2, CV_8U);
