@@ -1,3 +1,0 @@
-nvcc -I/usr/lib/opencv -I/usr/include/opencv4 gst_camera_histeq.cu \
--L/usr/lib -lopencv_core -lopencv_highgui -lopencv_videoio -lopencv_imgproc \
--lopencv_imgcodecs -o gst_camera_histeq.exe

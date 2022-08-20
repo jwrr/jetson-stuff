@@ -1,9 +1,8 @@
-// gst_camera.cpp
+// gst_camera_linearstreth.cpp
 // MIT License
 // Copyright (c) 2022 jwrr.com
 // Inspired by:
-// https://github.com/abubakr-shafique/Histogram_Equalization_CUDA_CPP and
-// JetsonHacks
+// JetsonHacks and others
 
 #include <iostream>
 #include <opencv2/opencv.hpp>
@@ -16,78 +15,100 @@ using namespace std;
 // ============================================================================
 // ============================================================================
 
+
 __global__
-void find_minmax_gpu(unsigned char* img, int N_CHAN, int* Min, int* Max)
+void find_minmax_gpu(unsigned char* img, int n_chan, int* min, int* max)
 {
   int x = blockIdx.x;
   int y = blockIdx.y;
-  int pixel_id = (x + y * gridDim.x) * N_CHAN;
-  for (int i = 0; i < N_CHAN; i++) {
-    atomicMin(&Min[i], img[pixel_id + i]);
-    atomicMax(&Max[i], img[pixel_id + i]);
+  int pixel_id = (x + y * gridDim.x) * n_chan;
+  for (int i = 0; i < n_chan; i++) {
+    atomicMin(&min[i], img[pixel_id + i]);
+    atomicMax(&max[i], img[pixel_id + i]);
   }
 }
 
 
 __device__
-int new_pixel_value(int Value, int Min, int Max)
+int new_pixel_value(int pixval, int min, int max)
 {
-  int Target_Min = 0;
-  int Target_Max = 255;
-  return (Target_Min + (Value - Min) * (int)((Target_Max - Target_Min)/(Max - Min)));
+  int output_min = 0;
+  int output_max = 255;
+  int output_rise = output_max - output_min;
+  int input_run = max - min;
+  int pixval_offset = pixval - min;
+  int pixval_scaled = pixval_offset * output_rise / input_run;
+  int output_pixval = output_min + pixval_scaled;
+  if (output_pixval > output_max) then output_pixval = output_max;
+  return output_pixval;
 }
 
 
 __global__
-void histeq_gpu(unsigned char* img, int N_CHAN, int* Min, int* Max)
+void linearstretch_gpu(unsigned char* img, int n_chan, int* min, int* max)
 {
   int x = blockIdx.x;
   int y = blockIdx.y;
-  int pixel_id = (x + y * gridDim.x) * N_CHAN;
-  for (int i = 0; i < N_CHAN; i++) {
-    img[pixel_id + i] = new_pixel_value(img[pixel_id + i], Min[i], Max[i]);
+  int pixel_id = (x + y * gridDim.x) * n_chan;
+  for (int i = 0; i < n_chan; i++) {
+    img[pixel_id + i] = new_pixel_value(img[pixel_id + i], min[i], max[i]);
   }
 }
 
+
 __global__
-void make_low_contrast_for_testing(int n, uint8_t a, uint8_t *x, uint8_t *y)
+void make_low_contrast_for_testing_gpu(int n, uint8_t a, uint8_t *x)
 {
  int i = blockIdx.x*blockDim.x + threadIdx.x;
- if (i < n) y[i] = x[i] >> a;
+ if (i < n) x[i] = x[i] >> a;
 }
 
+
 // ============================================================================
 // ============================================================================
 
-void histeq_wrapper(unsigned char* img, int Height, int Width, int N_CHAN)
+void linearstretch_wrapper(unsigned char* img, int height, int width, int n_chan)
 {
-  unsigned char* Dev_Image = NULL;
-  int* Dev_Min = NULL;
-  int* Dev_Max = NULL;
+  unsigned char* d_img = NULL;
+  int* d_min = NULL;
+  int* d_max = NULL;
   
   //allocate cuda variable memory
-  cudaMalloc((void**)&Dev_Image, Height * Width * N_CHAN);
-  cudaMalloc((void**)&Dev_Min, N_CHAN * sizeof(int));
-  cudaMalloc((void**)&Dev_Max, N_CHAN * sizeof(int));
+  cudaMalloc((void**)&d_img, height * width * n_chan);
+  cudaMalloc((void**)&d_min, n_chan * sizeof(int));
+  cudaMalloc((void**)&d_max, n_chan * sizeof(int));
   
-  int Min[3] = {255, 255, 255};
-  int Max[3] = {0, 0, 0};
+  int min[3] = {255, 255, 255};
+  int max[3] = {0, 0, 0};
   
   //copy CPU data to GPU
-  cudaMemcpy(Dev_Image, img, Height * Width * N_CHAN, cudaMemcpyHostToDevice);
-  cudaMemcpy(Dev_Min, Min, N_CHAN * sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(Dev_Max, Max, N_CHAN * sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_img, img, height * width * n_chan, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_min, min, n_chan * sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_max, max, n_chan * sizeof(int), cudaMemcpyHostToDevice);
   
-  dim3 Grid_Image(Width, Height);
-  find_minmax_gpu <<<Grid_Image, 1>>>(Dev_Image, N_CHAN, Dev_Min, Dev_Max);
-  histeq_gpu <<<Grid_Image, 1>>>(Dev_Image, N_CHAN, Dev_Min, Dev_Max);
+  dim3 Grid_Image(width, height);
+  find_minmax_gpu<<<Grid_Image, 1>>>(d_img, n_chan, d_min, d_max);
+  linearstretch_gpu <<<Grid_Image, 1>>>(d_img, n_chan, d_min, d_max);
   
   //copy memory back to CPU from GPU
-  cudaMemcpy(img, Dev_Image, Height * Width * N_CHAN, cudaMemcpyDeviceToHost);
+  cudaMemcpy(img, d_img, height * width * n_chan, cudaMemcpyDeviceToHost);
   
   //free up the memory of GPU
-  cudaFree(Dev_Image);
+  cudaFree(d_img);
 }
+
+
+void make_low_contrast_for_testing_wrapper(cv::Mat img)
+{
+  int N = vga_img.cols * vga_img.rows;
+  uint8_t *d_x;
+  cudaMalloc(&d_x, N*sizeof(uint8_t));
+  cudaMemcpy(d_x, vga_img.data, N*sizeof(uint8_t), cudaMemcpyHostToDevice);
+  make_low_contrast_for_testing_gpu<<<(N+255)/256, 256>>>(N, 4, d_x);
+  cudaMemcpy(low_contrast_img.data, d_y, N*sizeof(uint8_t), cudaMemcpyDeviceToHost);
+  cudaFree(d_x);
+}
+
 
 // ============================================================================
 // ============================================================================
@@ -152,18 +173,8 @@ int main()
         //
 
         cv::Mat low_contrast_img = vga_img.clone();
-        int N = vga_img.cols * vga_img.rows;
-        uint8_t *d_x, *d_y;
-        cudaMalloc(&d_x, N*sizeof(uint8_t));
-        cudaMalloc(&d_y, N*sizeof(uint8_t));
-        cudaMemcpy(d_x, vga_img.data, N*sizeof(uint8_t), cudaMemcpyHostToDevice);
-        // cudaMemcpy(d_y, vga_img.data, N*sizeof(uint8_t), cudaMemcpyHostToDevice);
-        make_low_contrast_for_testing<<<(N+255)/256, 256>>>(N, 4, d_x, d_y);
-        cudaMemcpy(low_contrast_img.data, d_y, N*sizeof(uint8_t), cudaMemcpyDeviceToHost);
-        cudaFree(d_x);
-        cudaFree(d_y);
-
-        histeq_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
+        make_low_contrast_for_testing_wrapper(low_contrast_img);
+        linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
 
         // cv::Mat gray8_img2;
         // gray16_img.convertTo(gray8_img2, CV_8U);
