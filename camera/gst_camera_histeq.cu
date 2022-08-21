@@ -11,6 +11,7 @@
 
 using namespace std;
 
+#define BLOCK_THREADS 64
 
 // ============================================================================
 // ============================================================================
@@ -55,6 +56,39 @@ void linearstretch_gpu(uint8_t* img, int n_chan, int* min, int* max)
   }
 }
 
+
+void linearstretch_wrapper(uint8_t* img, int rows, int cols, int n_chan)
+{
+  uint8_t* d_img = NULL;
+  int* d_min = NULL;
+  int* d_max = NULL;
+  
+  //allocate cuda memory
+  cudaMalloc((void**)&d_img, rows * cols * n_chan);
+  cudaMalloc((void**)&d_min, n_chan * sizeof(int));
+  cudaMalloc((void**)&d_max, n_chan * sizeof(int));
+  
+  int min[3] = {255, 255, 255};
+  int max[3] = {0, 0, 0};
+  
+  //copy CPU data to GPU
+  cudaMemcpy(d_img, img, rows * cols * n_chan, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_min, min, n_chan * sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_max, max, n_chan * sizeof(int), cudaMemcpyHostToDevice);
+  
+  dim3 Grid_Image(cols, rows);
+  find_minmax_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, n_chan, d_min, d_max);
+  linearstretch_gpu <<<Grid_Image, BLOCK_THREADS>>>(d_img, n_chan, d_min, d_max);
+  
+  //copy memory back to CPU from GPU
+  cudaMemcpy(img, d_img, rows * cols * n_chan, cudaMemcpyDeviceToHost);
+  
+  //free up the memory of GPU
+  cudaFree(d_img);
+}
+
+// ============================================================================
+// ============================================================================
 
 __global__
 void histeq0_gpu(uint8_t* img, int n, int* hist)
@@ -113,52 +147,6 @@ void histeq3_gpu(uint8_t* img, int n, int* hist)
 } // histeq_gpu
 
 
-__global__
-void make_low_contrast_for_testing_gpu(uint8_t *x, uint8_t a, int n)
-{
-  int i = blockIdx.x*blockDim.x + threadIdx.x;
-  if (i < n) {
-    uint8_t tmp = x[i] >> a;
-    uint8_t offset = tmp * (a-1) / (2*a);
-    x[i] = offset + tmp;
-  }
-};
-
-
-// ============================================================================
-// ============================================================================
-
-void linearstretch_wrapper(uint8_t* img, int rows, int cols, int n_chan)
-{
-  uint8_t* d_img = NULL;
-  int* d_min = NULL;
-  int* d_max = NULL;
-  
-  //allocate cuda memory
-  cudaMalloc((void**)&d_img, rows * cols * n_chan);
-  cudaMalloc((void**)&d_min, n_chan * sizeof(int));
-  cudaMalloc((void**)&d_max, n_chan * sizeof(int));
-  
-  int min[3] = {255, 255, 255};
-  int max[3] = {0, 0, 0};
-  
-  //copy CPU data to GPU
-  cudaMemcpy(d_img, img, rows * cols * n_chan, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_min, min, n_chan * sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_max, max, n_chan * sizeof(int), cudaMemcpyHostToDevice);
-  
-  dim3 Grid_Image(cols, rows);
-  find_minmax_gpu<<<Grid_Image, 1>>>(d_img, n_chan, d_min, d_max);
-  linearstretch_gpu <<<Grid_Image, 1>>>(d_img, n_chan, d_min, d_max);
-  
-  //copy memory back to CPU from GPU
-  cudaMemcpy(img, d_img, rows * cols * n_chan, cudaMemcpyDeviceToHost);
-  
-  //free up the memory of GPU
-  cudaFree(d_img);
-}
-
-
 void histeq_wrapper(uint8_t* img, int rows, int cols)
 {
   int N_IMG = rows * cols;
@@ -177,13 +165,13 @@ void histeq_wrapper(uint8_t* img, int rows, int cols)
   dim3 Grid_Image(cols, rows);
 
   // Steps: (0) init histogram, (1) make histogram, (2) make cdf, (3) enhance
-  histeq0_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, d_hist);
+  histeq0_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
-  histeq1_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, d_hist);
+  histeq1_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
-  histeq2_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, d_hist);
+  histeq2_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
-  histeq3_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, d_hist);
+  histeq3_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
   
   //copy GPU memory back to CPU memory
@@ -194,6 +182,55 @@ void histeq_wrapper(uint8_t* img, int rows, int cols)
   cudaFree(d_hist);
 } // histeq_wrapper
 
+// ============================================================================
+// ============================================================================
+
+__global__
+void crop_gpu(uint8_t* img, int tr, int lc, int h, int w, int stride, int n)
+{
+  int x = blockIdx.x;
+  int y = blockIdx.y;
+  int id = x + y * gridDim.x;
+  // Use Histogram for contrast enhanced output
+  if (id < n) {
+    int br = tr + h - 1;
+    int rc = lc + w - 1;
+    if (y >= tr && y <= br && x >= lc && x <= rc) {
+      int new_y = y - tr;
+      int new_x = x - lc;
+      int new_i = new_y * stride + new_x;
+      img[new_i] = img[id];
+    }
+  }
+} // crop_gpu
+
+
+void crop_wrapper(cv::Mat img, int tr, int lc, int h, int w)
+{
+  int N = img.cols * img.rows;
+  int N_BYTES = N*sizeof(uint8_t);
+  int stride = img.cols;
+  uint8_t *d_img;
+  cudaMalloc(&d_img, N_BYTES);
+  cudaMemcpy(d_img, img.data, N_BYTES, cudaMemcpyHostToDevice);
+  crop_gpu<<<(N+255)/256, 256>>>(d_img, tr, lc, h, w, stride, N);
+  cudaMemcpy(img.data, d_img, N_BYTES, cudaMemcpyDeviceToHost);
+  cudaFree(d_img);
+}
+
+// ============================================================================
+// ============================================================================
+
+__global__
+void make_low_contrast_for_testing_gpu(uint8_t *x, uint8_t a, int n)
+{
+  int i = blockIdx.x*blockDim.x + threadIdx.x;
+  if (i < n) {
+    uint8_t tmp = x[i] >> a;
+    uint8_t offset = tmp * (a-1) / (2*a);
+    x[i] = offset + tmp;
+  }
+};
 
 void make_low_contrast_for_testing_wrapper(cv::Mat img)
 {
@@ -206,18 +243,16 @@ void make_low_contrast_for_testing_wrapper(cv::Mat img)
   cudaFree(d_x);
 }
 
+// ============================================================================
+// ============================================================================
 
 // ============================================================================
 // ============================================================================
 
 int main()
 {
-    int capture_width = 1280;
-    int capture_height = 720;
     int disp_w = 320;
     int disp_h = 240;
-    int framerate = 30;
-    int flip_method = 0;
 
 /*
     string gst_in_string = 
@@ -273,10 +308,9 @@ int main()
       // ...
       //
 
-      cv::Mat low_contrast_img = vga_img.clone();
-      make_low_contrast_for_testing_wrapper(low_contrast_img);
+      make_low_contrast_for_testing_wrapper(vga_img);
 //    linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
-//      histeq_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols);
+      histeq_wrapper(vga_img.data, vga_img.rows, vga_img.cols);
 
       // cv::Mat gray8_img2;
       // gray16_img.convertTo(gray8_img2, CV_8U);
@@ -285,7 +319,7 @@ int main()
       // GStreamer warning: cvWriteFrame() needs images with depth = IPL_DEPTH_8U and nChannels = 3.
       cv::Mat bgr_img;
       // cv::cvtColor(gray8_img2, bgr_img, cv::COLOR_GRAY2BGR);
-      cv::cvtColor(low_contrast_img, bgr_img, cv::COLOR_GRAY2BGR);
+      cv::cvtColor(vga_img, bgr_img, cv::COLOR_GRAY2BGR);
 
       gst_out.write(bgr_img);
       // gst_out << img;
@@ -295,4 +329,3 @@ int main()
     gst_in.release();
     return 0;
 }
-
