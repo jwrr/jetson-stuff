@@ -1,4 +1,4 @@
-// gst_camera_histeq.cpp
+// gst_camera_histeq.cpp_gpu
 // MIT License
 // Copyright (c) 2022 jwrr.com
 // Inspired by:
@@ -11,7 +11,8 @@
 
 using namespace std;
 
-#define BLOCK_THREADS 64
+#define N_BLOCKS 1
+#define N_THREADS_PER_BLOCK 512
 
 // ============================================================================
 // ============================================================================
@@ -77,8 +78,8 @@ void linearstretch_wrapper(uint8_t* img, int rows, int cols, int n_chan)
   cudaMemcpy(d_max, max, n_chan * sizeof(int), cudaMemcpyHostToDevice);
   
   dim3 Grid_Image(cols, rows);
-  find_minmax_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, n_chan, d_min, d_max);
-  linearstretch_gpu <<<Grid_Image, BLOCK_THREADS>>>(d_img, n_chan, d_min, d_max);
+  find_minmax_gpu<<<Grid_Image, N_THREADS_PER_BLOCK>>>(d_img, n_chan, d_min, d_max);
+  linearstretch_gpu <<<Grid_Image, N_THREADS_PER_BLOCK>>>(d_img, n_chan, d_min, d_max);
   
   //copy memory back to CPU from GPU
   cudaMemcpy(img, d_img, rows * cols * n_chan, cudaMemcpyDeviceToHost);
@@ -87,18 +88,20 @@ void linearstretch_wrapper(uint8_t* img, int rows, int cols, int n_chan)
   cudaFree(d_img);
 }
 
+
 // ============================================================================
 // ============================================================================
 
 __global__
 void histeq0_gpu(uint8_t* img, int n, int* hist)
 {
-  int x = blockIdx.x;
-  int y = blockIdx.y;
-  int id = x + y * gridDim.x;
+  int id = threadIdx.x;
+  int stride = blockDim.x;
   // Init Histogram
-  if (id < n && id < 256) {
-    hist[id] = 0;
+  if (id < n) {
+    for (int i = id; i < 256; i += stride) {
+      hist[i] = 0;
+    }
   }
 }
 
@@ -106,12 +109,11 @@ void histeq0_gpu(uint8_t* img, int n, int* hist)
 __global__
 void histeq1_gpu(uint8_t* img, int n, int* hist)
 {
-  int x = blockIdx.x;
-  int y = blockIdx.y;
-  int id = x + y * gridDim.x;
+  int id = threadIdx.x;
+  int stride = blockDim.x;
   // Create Histogram
-  if (id < n) {
-    int bin = (int)img[id];
+  for (int i = id; i < n; i += stride) {
+    int bin = (int)img[i];
     atomicAdd(&hist[bin], 1); // FIXME: move hist to shared memory
   }
 }
@@ -120,9 +122,8 @@ void histeq1_gpu(uint8_t* img, int n, int* hist)
 __global__
 void histeq2_gpu(uint8_t* img, int n, int* hist)
 {
-  int x = blockIdx.x;
-  int y = blockIdx.y;
-  int id = x + y * gridDim.x;
+  int id = threadIdx.x;
+  // int stride = blockDim.x;
   // Convert Histogram to CDF
   if (id == 0) {
     for (int ii = 1; ii < 256; ii++) { // FIXME: convert to parallel
@@ -135,14 +136,13 @@ void histeq2_gpu(uint8_t* img, int n, int* hist)
 __global__
 void histeq3_gpu(uint8_t* img, int n, int* hist)
 {
-  int x = blockIdx.x;
-  int y = blockIdx.y;
-  int id = x + y * gridDim.x;
+  int id = threadIdx.x;
+  int stride = blockDim.x;
   // Use Histogram for contrast enhanced output
-  if (id < n) {
-    int h = hist[img[id]] * 256 / hist[255];
+  for (int i = id; i < n; i += stride) {
+    int h = hist[img[i]] * 256 / hist[255];
     if (h > 255) h = 255;
-    img[id] = (uint8_t)h;
+    img[i] = (uint8_t)h;
   }
 } // histeq_gpu
 
@@ -162,16 +162,14 @@ void histeq_wrapper(uint8_t* img, int rows, int cols)
   //copy CPU data to GPU
   cudaMemcpy(d_img, img, N_BYTES, cudaMemcpyHostToDevice);
   
-  dim3 Grid_Image(cols, rows);
-
   // Steps: (0) init histogram, (1) make histogram, (2) make cdf, (3) enhance
-  histeq0_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, N_IMG, d_hist);
+  histeq0_gpu<<<N_BLOCKS, N_THREADS_PER_BLOCK>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
-  histeq1_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, N_IMG, d_hist);
+  histeq1_gpu<<<N_BLOCKS, N_THREADS_PER_BLOCK>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
-  histeq2_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, N_IMG, d_hist);
+  histeq2_gpu<<<N_BLOCKS, N_THREADS_PER_BLOCK>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
-  histeq3_gpu<<<Grid_Image, BLOCK_THREADS>>>(d_img, N_IMG, d_hist);
+  histeq3_gpu<<<N_BLOCKS, N_THREADS_PER_BLOCK>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
   
   //copy GPU memory back to CPU memory
@@ -224,8 +222,10 @@ void crop_wrapper(cv::Mat img, int tr, int lc, int h, int w)
 __global__
 void make_low_contrast_for_testing_gpu(uint8_t *x, uint8_t a, int n)
 {
-  int i = blockIdx.x*blockDim.x + threadIdx.x;
-  if (i < n) {
+  int id = threadIdx.x;
+  int stride = blockDim.x;
+  // Use Histogram for contrast enhanced output
+  for (int i = id; i < n; i += stride) {
     uint8_t tmp = x[i] >> a;
     uint8_t offset = tmp * (a-1) / (2*a);
     x[i] = offset + tmp;
@@ -238,7 +238,7 @@ void make_low_contrast_for_testing_wrapper(cv::Mat img)
   uint8_t *d_x;
   cudaMalloc(&d_x, N*sizeof(uint8_t));
   cudaMemcpy(d_x, img.data, N*sizeof(uint8_t), cudaMemcpyHostToDevice);
-  make_low_contrast_for_testing_gpu<<<(N+255)/256, 256>>>(d_x, 4, N);
+  make_low_contrast_for_testing_gpu<<<1, N_THREADS_PER_BLOCK>>>(d_x, 4, N);
   cudaMemcpy(img.data, d_x, N*sizeof(uint8_t), cudaMemcpyDeviceToHost);
   cudaFree(d_x);
 }
@@ -251,8 +251,9 @@ void make_low_contrast_for_testing_wrapper(cv::Mat img)
 
 int main()
 {
-    int disp_w = 320;
-    int disp_h = 240;
+    int disp_w = 640;
+    int disp_h = 480;
+    int frame_rate = 60;
 
 /*
     string gst_in_string = 
@@ -264,7 +265,8 @@ int main()
 
     string gst_in_string = 
         "nvarguscamerasrc ! video/x-raw(memory:NVMM),width=(int)1280,"
-        "height=(int)720, framerate=(fraction)30/1 ! nvvidconv flip-method=0"
+        "height=(int)720, framerate=(fraction)" + to_string(frame_rate) + 
+        "/1 ! nvvidconv flip-method=0"
         " ! video/x-raw,width=(int)1280,height=(int)720,format=(string)BGRx"
         " ! videoconvert ! video/x-raw,format=(string)BGR ! appsink";
 
@@ -278,7 +280,7 @@ int main()
     string gst_out_string = "appsrc ! videoconvert ! ximagesink";
     cout << "gst_out_string: " << gst_out_string << endl;
     cv::VideoWriter gst_out;
-    gst_out.open(gst_out_string, 0, (double)30, cv::Size(disp_w, disp_h), true);
+    gst_out.open(gst_out_string, 0, (double)frame_rate, cv::Size(disp_w, disp_h), true);
     if (!gst_out.isOpened()) {
         cout << "Error - Failed to create gstreamer output" << endl;
         return -1;
