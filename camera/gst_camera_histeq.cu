@@ -57,7 +57,7 @@ void linearstretch_gpu(uint8_t* img, int n_chan, int* min, int* max)
 
 
 __global__
-void histeq0_gpu(uint8_t* img, int n, uint8_t* hist)
+void histeq0_gpu(uint8_t* img, int n, int* hist)
 {
   int x = blockIdx.x;
   int y = blockIdx.y;
@@ -70,20 +70,21 @@ void histeq0_gpu(uint8_t* img, int n, uint8_t* hist)
 
   
 __global__
-void histeq1_gpu(uint8_t* img, int n, uint8_t* hist)
+void histeq1_gpu(uint8_t* img, int n, int* hist)
 {
   int x = blockIdx.x;
   int y = blockIdx.y;
   int id = x + y * gridDim.x;
   // Create Histogram
   if (id < n) {
-    atomicAdd(hist[img[id]], 1); // FIXME: move hist to shared memory
+    int bin = (int)img[id];
+    atomicAdd(&hist[bin], 1); // FIXME: move hist to shared memory
   }
 }
 
   
 __global__
-void histeq2_gpu(uint8_t* img, int n, uint8_t* hist)
+void histeq2_gpu(uint8_t* img, int n, int* hist)
 {
   int x = blockIdx.x;
   int y = blockIdx.y;
@@ -98,14 +99,16 @@ void histeq2_gpu(uint8_t* img, int n, uint8_t* hist)
 
 
 __global__
-void histeq3_gpu(uint8_t* img, int n, uint8_t* hist)
+void histeq3_gpu(uint8_t* img, int n, int* hist)
 {
   int x = blockIdx.x;
   int y = blockIdx.y;
   int id = x + y * gridDim.x;
   // Use Histogram for contrast enhanced output
   if (id < n) {
-    img[id] = hist[img[id]];
+    int h = hist[img[id]] * 256 / hist[255];
+    if (h > 255) h = 255;
+    img[id] = (uint8_t)h;
   }
 } // histeq_gpu
 
@@ -161,11 +164,12 @@ void histeq_wrapper(uint8_t* img, int rows, int cols)
   int N_IMG = rows * cols;
   int N_BYTES = N_IMG * sizeof(uint8_t);
   int N_HIST = 256;
-  uint8_t *d_img, *d_hist;
+  uint8_t *d_img;
+  int *d_hist;
   
   //allocate cuda memory
   cudaMalloc((void**)&d_img, N_BYTES);
-  cudaMalloc((void**)&d_hist, N_HIST * sizeof(uint8_t));
+  cudaMalloc((void**)&d_hist, N_HIST * sizeof(int));
   
   //copy CPU data to GPU
   cudaMemcpy(d_img, img, N_BYTES, cudaMemcpyHostToDevice);
@@ -173,13 +177,13 @@ void histeq_wrapper(uint8_t* img, int rows, int cols)
   dim3 Grid_Image(cols, rows);
 
   // Steps: (0) init histogram, (1) make histogram, (2) make cdf, (3) enhance
-  histeq0_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, uint8_t* hist)
+  histeq0_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
-  histeq1_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, uint8_t* hist)
+  histeq1_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
-  histeq2_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, uint8_t* hist)
+  histeq2_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
-  histeq3_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, uint8_t* hist)
+  histeq3_gpu<<<Grid_Image, 1>>>(d_img, N_IMG, d_hist);
   cudaDeviceSynchronize();
   
   //copy GPU memory back to CPU memory
@@ -210,8 +214,8 @@ int main()
 {
     int capture_width = 1280;
     int capture_height = 720;
-    int display_width = 1280;
-    int display_height = 720;
+    int disp_w = 320;
+    int disp_h = 240;
     int framerate = 30;
     int flip_method = 0;
 
@@ -239,48 +243,52 @@ int main()
     string gst_out_string = "appsrc ! videoconvert ! ximagesink";
     cout << "gst_out_string: " << gst_out_string << endl;
     cv::VideoWriter gst_out;
-    gst_out.open(gst_out_string, 0, (double)30, cv::Size(640, 480), true);
+    gst_out.open(gst_out_string, 0, (double)30, cv::Size(disp_w, disp_h), true);
     if (!gst_out.isOpened()) {
         cout << "Error - Failed to create gstreamer output" << endl;
         return -1;
     }
 
     cout << "Hit Ctrl-C to exit" << endl;
-    while (cv::waitKey(1) == -1) {
-        cv::Mat img;
-        if (!gst_in.read(img)) {
-            cout << "Capture read error" << endl;
-            break;
-        }
+    while (true) {
+      int key = cv::waitKey(1);
+      if (key != -1) {
+        cout << "key=" << key << endl;
+      }
+      cv::Mat img;
+      if (!gst_in.read(img)) {
+          cout << "Capture read error" << endl;
+          break;
+      }
 
-        cv::Mat gray8_img;
-        cv::cvtColor(img, gray8_img, cv::COLOR_BGR2GRAY);
-        //cv::Mat gray16_img;
-        //gray8_img.convertTo(gray16_img, CV_16U);
+      cv::Mat gray8_img;
+      cv::cvtColor(img, gray8_img, cv::COLOR_BGR2GRAY);
+      //cv::Mat gray16_img;
+      //gray8_img.convertTo(gray16_img, CV_16U);
 
-        cv::Mat vga_img;
-        cv::resize(gray8_img, vga_img, cv::Size(640, 480), cv::INTER_LINEAR);
+      cv::Mat vga_img;
+      cv::resize(gray8_img, vga_img, cv::Size(disp_w, disp_h), cv::INTER_LINEAR);
 
-        // Process monochrome
-        // ...
-        //
+      // Process monochrome
+      // ...
+      //
 
-        cv::Mat low_contrast_img = vga_img.clone();
-        make_low_contrast_for_testing_wrapper(low_contrast_img);
-//      linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
-        histeq_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols);
+      cv::Mat low_contrast_img = vga_img.clone();
+      make_low_contrast_for_testing_wrapper(low_contrast_img);
+//    linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
+//      histeq_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols);
 
-        // cv::Mat gray8_img2;
-        // gray16_img.convertTo(gray8_img2, CV_8U);
+      // cv::Mat gray8_img2;
+      // gray16_img.convertTo(gray8_img2, CV_8U);
 
-        // ximagesink doesn't like GRAY8 so convert to BGR
-        // GStreamer warning: cvWriteFrame() needs images with depth = IPL_DEPTH_8U and nChannels = 3.
-        cv::Mat bgr_img;
-        // cv::cvtColor(gray8_img2, bgr_img, cv::COLOR_GRAY2BGR);
-        cv::cvtColor(low_contrast_img, bgr_img, cv::COLOR_GRAY2BGR);
-	
-        gst_out.write(bgr_img);
-        // gst_out << img;
+      // ximagesink doesn't like GRAY8 so convert to BGR
+      // GStreamer warning: cvWriteFrame() needs images with depth = IPL_DEPTH_8U and nChannels = 3.
+      cv::Mat bgr_img;
+      // cv::cvtColor(gray8_img2, bgr_img, cv::COLOR_GRAY2BGR);
+      cv::cvtColor(low_contrast_img, bgr_img, cv::COLOR_GRAY2BGR);
+
+      gst_out.write(bgr_img);
+      // gst_out << img;
 
     }
 
