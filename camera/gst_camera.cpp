@@ -74,7 +74,7 @@ int main()
         // ximagesink doesn't like GRAY8 so convert to BGR
         // GStreamer warning: cvWriteFrame() needs images with depth = IPL_DEPTH_8U and nChannels = 3.
         cv::Mat bgr_img;
-	cv::cvtColor(gray8_img2, bgr_img, cv::COLOR_GRAY2BGR);
+        cv::cvtColor(gray8_img2, bgr_img, cv::COLOR_GRAY2BGR);
 	
         gst_out.write(bgr_img);
         // gst_out << img;

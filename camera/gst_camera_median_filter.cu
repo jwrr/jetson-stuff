@@ -98,7 +98,10 @@ void sort(int *a, int n, int stride)
   if(stride > 1) sort(a, n, stride / 2);
   for(int i=0; i < n-stride; i++){
     if(a[i] > a[i+stride]){
-      swap(a[i], a[i+stride]);
+      // swap(a[i], a[i+stride]); // undefined in device code
+      int tmp = a[i];
+      a[i] = a[i+stride];
+      a[i+stride] = tmp;
     }
   }
   if(stride > 1) sort(a, n, stride / 2);
@@ -111,6 +114,8 @@ void sort_array(int *a, int n)
   sort(a, n, n / 2);
 }
 
+// recursion causes this warning: ptxas warning : Stack size for entry 
+// function '_Z17median_filter_gpuPhii' cannot be statically determined
 
 __global__
 void median_filter_gpu(uint8_t* img, int n_rows, int n_cols)
@@ -120,7 +125,7 @@ void median_filter_gpu(uint8_t* img, int n_rows, int n_cols)
   int n_img = n_rows * n_cols;
   int n_dim = 5;
   int n_window = n_dim * n_dim;
-  int n_window_pow2 = 32;
+  const int n_window_pow2 = 32;
   int n_half = n_dim / 2;
   for (int i = id; i < n_img; i += stride) {
     int window[n_window_pow2] = { 0 };
@@ -155,7 +160,7 @@ void median_filter_wrapper(uint8_t* img, int n_rows, int n_cols)
   cudaMemcpy(d_img, img, n_bytes, cudaMemcpyHostToDevice);
   median_filter_gpu<<<N_BLOCKS, N_THREADS_PER_BLOCK>>>(d_img, n_rows, n_cols);
   cudaDeviceSynchronize();
-  cudaMemcpy(img, d_img, N_BYTES, cudaMemcpyDeviceToHost);
+  cudaMemcpy(img, d_img, n_bytes, cudaMemcpyDeviceToHost);
   cudaFree(d_img);
 } // median_filter_wrapper
 
@@ -382,7 +387,7 @@ int main()
       // ...
       //
 
-      median_filter_wrapper(vga_img, vga_img.rows, vga_img.cols);
+      median_filter_wrapper(vga_img.data, vga_img.rows, vga_img.cols);
 
 //      make_low_contrast_for_testing_wrapper(vga_img);
 //    linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
