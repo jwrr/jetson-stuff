@@ -11,8 +11,8 @@
 
 using namespace std;
 
-#define N_BLOCKS 1
-#define N_THREADS_PER_BLOCK 512
+#define N_BLOCKS 2
+#define N_THREADS_PER_BLOCK 640
 
 // ============================================================================
 // ============================================================================
@@ -97,7 +97,7 @@ void sort(int *a, int n, int stride)
 {
   if(stride > 1) sort(a, n, stride / 2);
   for(int i=0; i < n-stride; i++){
-    if(a[i] > a[i+stride]){
+    if(a[i] < a[i+stride]){
       // swap(a[i], a[i+stride]); // undefined in device code
       int tmp = a[i];
       a[i] = a[i+stride];
@@ -118,17 +118,18 @@ void sort_array(int *a, int n)
 // function '_Z17median_filter_gpuPhii' cannot be statically determined
 
 __global__
-void median_filter_gpu(uint8_t* img, int n_rows, int n_cols)
+void median_filter_gpu(uint8_t* img, int n_rows, int n_cols, const int n_filter_size)
 {
-  int id = threadIdx.x;
-  int stride = blockDim.x;
-  int n_img = n_rows * n_cols;
-  int n_dim = 5;
-  int n_window = n_dim * n_dim;
-  const int n_window_pow2 = 32;
-  int n_half = n_dim / 2;
+  const int id = blockDim.x * blockIdx.x + threadIdx.x;
+  const int stride = blockDim.x;
+  const int n_img = n_rows * n_cols;
+  const int n_dim = n_filter_size;
+  const int n_window = n_dim * n_dim;
+  const int n_window_pow2 = 16; // 32;
+  const int n_window_max = 32;
+  const int n_half = n_dim / 2;
   for (int i = id; i < n_img; i += stride) {
-    int window[n_window_pow2] = { 0 };
+    int window[n_window_max] = { 0 };
     int row = i / n_cols;
     int col = i % n_cols;
     
@@ -152,17 +153,50 @@ void median_filter_gpu(uint8_t* img, int n_rows, int n_cols)
 } // median_filter_gpu
 
 
-void median_filter_wrapper(uint8_t* img, int n_rows, int n_cols)
+void median_filter_wrapper(uint8_t* img, int n_rows, int n_cols, const int n_filter_size)
 {
   int n_bytes = n_rows * n_cols * sizeof(uint8_t);
   uint8_t *d_img;
   cudaMalloc((void**)&d_img, n_bytes);
   cudaMemcpy(d_img, img, n_bytes, cudaMemcpyHostToDevice);
-  median_filter_gpu<<<N_BLOCKS, N_THREADS_PER_BLOCK>>>(d_img, n_rows, n_cols);
+  median_filter_gpu<<<N_BLOCKS, N_THREADS_PER_BLOCK>>>(d_img, n_rows, n_cols, n_filter_size);
   cudaDeviceSynchronize();
   cudaMemcpy(img, d_img, n_bytes, cudaMemcpyDeviceToHost);
   cudaFree(d_img);
 } // median_filter_wrapper
+
+
+// ============================================================================
+// ============================================================================
+
+
+
+__global__
+void add_popcorn_gpu(uint8_t* img, int n_rows, int n_cols)
+{
+  const int id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int stride = blockDim.x;
+  const int n_img = n_rows * n_cols;
+  for (int i = id; i < n_img; i += stride) {
+    int add_noise = i % 1000;
+    if (add_noise == 1) {
+      img[i] = 254;
+    }
+  } // grid step
+} // add_popcorn_gpu
+
+
+void add_popcorn_wrapper(uint8_t* img, int n_rows, int n_cols)
+{
+  int n_bytes = n_rows * n_cols * sizeof(uint8_t);
+  uint8_t *d_img;
+  cudaMalloc((void**)&d_img, n_bytes);
+  cudaMemcpy(d_img, img, n_bytes, cudaMemcpyHostToDevice);
+  add_popcorn_gpu<<<N_BLOCKS, N_THREADS_PER_BLOCK>>>(d_img, n_rows, n_cols);
+  cudaDeviceSynchronize();
+  cudaMemcpy(img, d_img, n_bytes, cudaMemcpyDeviceToHost);
+  cudaFree(d_img);
+} // add_popcorn_wrapper
 
 
 // ============================================================================
@@ -330,7 +364,16 @@ int main()
 {
     int disp_w = 640;
     int disp_h = 480;
-    int frame_rate = 60;
+    int frame_rate = 30;
+
+    string gst_out_string = "appsrc ! videoconvert ! ximagesink";
+    cout << "gst_out_string: " << gst_out_string << endl;
+    cv::VideoWriter gst_out;
+    gst_out.open(gst_out_string, 0, (double)frame_rate, cv::Size(disp_w, disp_h), true);
+    if (!gst_out.isOpened()) {
+        cout << "Error - Failed to create gstreamer output" << endl;
+        return -1;
+    }
 
 /*
     string gst_in_string = 
@@ -341,11 +384,11 @@ int main()
 */
 
     string gst_in_string = 
-        "nvarguscamerasrc ! video/x-raw(memory:NVMM),width=(int)1280,"
-        "height=(int)720, framerate=(fraction)" + to_string(frame_rate) + 
-        "/1 ! nvvidconv flip-method=0"
-        " ! video/x-raw,width=(int)1280,height=(int)720,format=(string)BGRx"
-        " ! videoconvert ! video/x-raw,format=(string)BGR ! appsink";
+        "nvarguscamerasrc ! video/x-raw(memory:NVMM),"
+        "width=1640,height=1232,framerate=" + to_string(frame_rate) + "/1"
+        " ! nvvidconv ! video/x-raw,width=" + to_string(disp_w) + 
+        ",height=" + to_string(disp_h) + ",format=BGRx"
+        " ! videoconvert ! video/x-raw,format=BGR ! appsink";
 
     cout << "gst_in_string: " << gst_in_string << endl;
     cv::VideoCapture gst_in(gst_in_string, cv::CAP_GSTREAMER);
@@ -354,14 +397,6 @@ int main()
         return -1;
     }
 
-    string gst_out_string = "appsrc ! videoconvert ! ximagesink";
-    cout << "gst_out_string: " << gst_out_string << endl;
-    cv::VideoWriter gst_out;
-    gst_out.open(gst_out_string, 0, (double)frame_rate, cv::Size(disp_w, disp_h), true);
-    if (!gst_out.isOpened()) {
-        cout << "Error - Failed to create gstreamer output" << endl;
-        return -1;
-    }
 
     cout << "Hit Ctrl-C to exit" << endl;
     while (true) {
@@ -387,7 +422,9 @@ int main()
       // ...
       //
 
-      median_filter_wrapper(vga_img.data, vga_img.rows, vga_img.cols);
+      const int n_filter_size = 3; // must be 3x3 or 5x5
+      add_popcorn_wrapper(vga_img.data, vga_img.rows, vga_img.cols);
+      median_filter_wrapper(vga_img.data, vga_img.rows, vga_img.cols, n_filter_size);
 
 //      make_low_contrast_for_testing_wrapper(vga_img);
 //    linearstretch_wrapper(low_contrast_img.data, vga_img.rows, vga_img.cols, vga_img.channels());
